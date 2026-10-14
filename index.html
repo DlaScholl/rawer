@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Поглаживания лабрадора — кликер от Саши</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', sans-serif; user-select:none; }
+  body {
+    min-height:100vh;
+    background:linear-gradient(135deg,#ffd86b,#ffb36b 50%,#ff9a6b);
+    display:flex; justify-content:center; align-items:flex-start;
+    padding:20px;
+  }
+  .game {
+    background:rgba(255,255,255,.92);
+    border-radius:20px; padding:24px;
+    max-width:900px; width:100%;
+    box-shadow:0 10px 40px rgba(0,0,0,.25);
+  }
+  h1 { text-align:center; color:#6b4b2a; margin-bottom:6px; }
+  .counter { text-align:center; font-size:28px; font-weight:bold; color:#3d2b1f; margin:10px 0 2px; }
+  .per-sec { text-align:center; color:#8a6d4b; margin-bottom:14px; }
+  .dog-area { text-align:center; margin:10px 0 20px; }
+  #dog {
+    font-size:120px; cursor:pointer; display:inline-block;
+    transition:transform .08s;
+  }
+  #dog:active { transform:scale(.9) rotate(-3deg); }
+  .float-coin {
+    position:absolute; font-size:22px; font-weight:bold; color:#c98a2b;
+    animation:floatUp .9s ease-out forwards; pointer-events:none;
+  }
+  @keyframes floatUp { from{opacity:1; transform:translateY(0)} to{opacity:0; transform:translateY(-60px)} }
+  .tabs { display:flex; gap:8px; margin-bottom:12px; }
+  .tabs button {
+    flex:1; padding:10px; border:none; border-radius:10px;
+    background:#e8dcc8; color:#5a4632; font-weight:bold; cursor:pointer;
+  }
+  .tabs button.active { background:#6b4b2a; color:#fff; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .shop-item {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#f7efe2; border-radius:12px; padding:12px; margin-bottom:10px;
+  }
+  .shop-item .info { flex:1; padding-right:10px; }
+  .shop-item .name { font-weight:bold; color:#3d2b1f; }
+  .shop-item .desc { font-size:13px; color:#8a6d4b; }
+  .shop-item .owned { font-size:12px; color:#6b4b2a; margin-top:4px; }
+  .buy-btn {
+    background:#6b4b2a; color:#fff; border:none; border-radius:10px;
+    padding:10px 16px; font-weight:bold; cursor:pointer; white-space:nowrap;
+  }
+  .buy-btn:disabled { background:#c9bda9; cursor:not-allowed; }
+  .buy-btn:not(:disabled):hover { background:#8a6540; }
+  .log {
+    margin-top:14px; max-height:120px; overflow-y:auto;
+    font-size:13px; color:#8a6d4b; background:#f7efe2; border-radius:10px; padding:10px;
+  }
+  .save-row { text-align:center; margin-top:14px; display:flex; gap:8px; justify-content:center; }
+  .save-row button {
+    border:none; border-radius:10px; padding:8px 14px; cursor:pointer;
+    background:#e8dcc8; color:#5a4632; font-weight:bold;
+  }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#3d2b1f; color:#fff; padding:10px 18px; border-radius:10px;
+    opacity:0; transition:opacity .3s; pointer-events:none; font-size:14px;
+  }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>🐶 Поглаживания лабрадора Рона🐕</h1>
+  <div class="counter"><span id="pets">0</span> поглаживаний</div>
+  <div class="per-sec"><span id="pps">0</span> за секунду · <span id="click-power">1</span> за клик</div>
+
+  <div class="dog-area" id="dogArea">
+    <span id="dog">🐕</span>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-tab="shop">Магазин</button>
+    <button data-tab="upgrades">Улучшения клика</button>
+    <button data-tab="stats">Статистика</button>
+  </div>
+
+  <div class="panel active" id="shop">
+    <!-- заполняется скриптом -->
+  </div>
+
+  <div class="panel" id="upgrades"></div>
+
+  <div class="panel" id="stats">
+    <div class="shop-item"><div class="info">
+      <div class="name">Всего поглаживаний</div>
+      <div class="desc" id="stat-total">0</div>
+    </div></div>
+    <div class="shop-item"><div class="info">
+      <div class="name">Кликов сделано</div>
+      <div class="desc" id="stat-clicks">0</div>
+    </div></div>
+    <div class="shop-item"><div class="info">
+      <div class="name">Куплено улучшений</div>
+      <div class="desc" id="stat-bought">0</div>
+    </div></div>
+  </div>
+
+  <div class="log" id="log">История событий появится здесь…</div>
+
+  <div class="save-row">
+    <button id="saveBtn">💾 Сохранить</button>
+    <button id="resetBtn">🗑️ Сбросить</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------- Данные магазина ----------
+// Каждый предмет: id, название, описание, базовая цена, множитель цены,
+// прирост (поглаживания/сек) ИЛИ бонус к клику
+const SHOP_ITEMS = [
+  { id:'bone',    name:'🦴 Косточка',        desc:'+0.2 поглаживания/сек',      base:15,     growth:1.15, pps:0.2, click:0 },
+  { id:'ball',    name:'🎾 Мячик',           desc:'+0.5 поглаживания/сек',      base:80,     growth:1.18, pps:0.5, click:0 },
+  { id:'bed',     name:'🛏️ Удобная лежанка', desc:'+2 поглаживания/сек',        base:400,    growth:1.20, pps:2,   click:0 },
+  { id:'friend',  name:'🐕‍🦺 Второй лабрадор', desc:'+5 поглаживаний/сек',      base:2000,   growth:1.22, pps:5,   click:0 },
+  { id:'pool',    name:'🏊 Бассейн',         desc:'+15 поглаживаний/сек',       base:9000,   growth:1.25, pps:15,  click:0 },
+  { id:'park',    name:'🌳 Собачий парк',    desc:'+50 поглаживаний/сек',       base:40000,  growth:1.28, pps:50,  click:0 },
+  { id:'kennel',  name:'🏠 Питомник',        desc:'+200 поглаживаний/сек',      base:180000, growth:1.30, pps:200, click:0 },
+];
+
+const CLICK_UPGRADES = [
+  { id:'soft',   name:'🤲 Мягкие руки',     desc:'+1 поглаживание за клик',        base:30,    growth:1.6,  pps:0, click:1 },
+  { id:'glove',  name:'🧤 Массажная рукавица', desc:'+3 поглаживания за клик',   base:250,   growth:1.7,  pps:0, click:3 },
+  { id:'combo',  name:'⚡ Двойное поглаживание', desc:'+10 поглаживаний за клик', base:1500,  growth:1.8,  pps:0, click:10 },
+  { id:'magic',  name:'✨ Волшебная рука',   desc:'+40 поглаживаний за клик',       base:9000,  growth:1.9,  pps:0, click:40 },
+  { id:'legend', name:'🌟 Легендарное поглаживание', desc:'+200 за клик',           base:60000, growth:2.0,  pps:0, click:200 },
+];
+
+// ---------- Состояние ----------
+let state = {
+  pets: 0, total: 0, clicks: 0, bought: 0,
+  items: {},  // id -> количество
+};
+
+function load() {
+  try {
+    const s = localStorage.getItem('labrador-clicker');
+    if (s) state = Object.assign(state, JSON.parse(s));
+  } catch(e) {}
+}
+function save() {
+  localStorage.setItem('labrador-clicker', JSON.stringify(state));
+  toast('Сохранено 💾');
+}
+
+// ---------- Вычисления ----------
+function priceOf(item, owned) {
+  return Math.floor(item.base * Math.pow(item.growth, owned));
+}
+function perSecond() {
+  let sum = 0;
+  for (const item of SHOP_ITEMS) sum += (state.items[item.id] || 0) * item.pps;
+  return sum;
+}
+function perClick() {
+  let sum = 1;
+  for (const item of CLICK_UPGRADES) sum += (state.items[item.id] || 0) * item.click;
+  return sum;
+}
+
+// ---------- Рендер ----------
+const fmt = n => {
+  if (n >= 1e9) return (n/1e9).toFixed(2) + ' млрд';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + ' млн';
+  if (n >= 1e4) return Math.floor(n).toLocaleString('ru');
+  return (n % 1 === 0) ? String(n) : n.toFixed(1);
+};
+
+function renderItem(item, container) {
+  const owned = state.items[item.id] || 0;
+  const price = priceOf(item, owned);
+  const affordable = state.pets >= price;
+  const div = document.createElement('div');
+  div.className = 'shop-item';
+  div.innerHTML = `
+    <div class="info">
+      <div class="name">${item.name}</div>
+      <div class="desc">${item.desc}</div>
+      <div class="owned">Куплено: ${owned}</div>
+    </div>
+    <button class="buy-btn" ${affordable ? '' : 'disabled'}>${fmt(price)}</button>`;
+  div.querySelector('.buy-btn').addEventListener('click', () => buy(item));
+  container.appendChild(div);
+}
+
+function renderShop() {
+  const shop = document.getElementById('shop');
+  shop.innerHTML = '';
+  SHOP_ITEMS.forEach(it => renderItem(it, shop));
+
+  const up = document.getElementById('upgrades');
+  up.innerHTML = '';
+  CLICK_UPGRADES.forEach(it => renderItem(it, up));
+
+  document.getElementById('stat-total').textContent = fmt(state.total);
+  document.getElementById('stat-clicks').textContent = fmt(state.clicks);
+  document.getElementById('stat-bought').textContent = state.bought;
+}
+
+function renderHUD() {
+  document.getElementById('pets').textContent = fmt(state.pets);
+  document.getElementById('pps').textContent = perSecond().toFixed(1);
+  document.getElementById('click-power').textContent = fmt(perClick());
+}
+
+function log(msg) {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('ru');
+  el.innerHTML = `<div>• [${time}] ${msg}</div>` + el.innerHTML;
+  while (el.children.length > 20) el.removeChild(el.lastChild);
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+// ---------- Покупка ----------
+function buy(item) {
+  const owned = state.items[item.id] || 0;
+  const price = priceOf(item, owned);
+  if (state.pets < price) { toast('Не хватает поглаживаний!'); return; }
+  state.pets -= price;
+  state.items[item.id] = owned + 1;
+  state.bought += 1;
+  log(`Куплено: ${item.name} №${owned + 1} за ${fmt(price)}`);
+  renderShop();
+  renderHUD();
+  save();
+}
+
+// ---------- Клик по собаке ----------
+const dogArea = document.getElementById('dogArea');
+document.getElementById('dog').addEventListener('click', e => {
+  const gain = perClick();
+  state.pets += gain;
+  state.total += gain;
+  state.clicks += 1;
+
+  const coin = document.createElement('div');
+  coin.className = 'float-coin';
+  coin.textContent = '+' + fmt(gain);
+  const rect = dogArea.getBoundingClientRect();
+  coin.style.left = (e.clientX - rect.left - 20) + 'px';
+  coin.style.top  = (e.clientY - rect.top - 30) + 'px';
+  dogArea.style.position = 'relative';
+  dogArea.appendChild(coin);
+  setTimeout(() => coin.remove(), 900);
+
+  renderHUD();
+});
+
+// ---------- Пассивный доход ----------
+setInterval(() => {
+  const pps = perSecond();
+  if (pps > 0) {
+    state.pets += pps / 10;
+    state.total += pps / 10;
+    renderHUD();
+  }
+}, 100);
+
+// Раз в секунду обновляем кнопки (списание/накопление меняет доступность)
+setInterval(renderShop, 1000);
+
+// ---------- Вкладки ----------
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ---------- Сохранение и сброс ----------
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (confirm('Точно сбросить весь прогресс?')) {
+    state = { pets:0, total:0, clicks:0, bought:0, items:{} };
+    localStorage.removeItem('labrador-clicker');
+    renderShop(); renderHUD();
+    log('Прогресс сброшен');
+  }
+});
+
+load();
+renderShop();
+renderHUD();
+log('Игра загружена. Гладь лабрадора!');
+</script>
+</body>
+</html>
